@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python 3 エンジニア認定基礎試験 練習問題</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <h1 id="logo-link">
+    <span class="logo">Py</span>
+    Python 3 基礎試験 練習問題
+  </h1>
+  <span class="header-info">全116問収録 · 選択式 · 合格ライン70%</span>
+</header>
+
+<!-- HOME PAGE -->
+<div id="page-home" class="page active">
+  <div class="home-hero">
+    <h2>Python 3 エンジニア認定基礎試験</h2>
+    <p>Pythonチュートリアル準拠の練習問題です。章を選んで集中学習するか、全章まとめて模擬試験に挑戦しましょう。</p>
+    <div class="exam-meta">
+      <div class="exam-meta-item"><strong>116問</strong>収録問題数</div>
+      <div class="exam-meta-item"><strong>13章</strong>収録章数</div>
+      <div class="exam-meta-item"><strong>70%</strong>合格ライン</div>
+      <div class="exam-meta-item"><strong>選択式</strong>出題形式</div>
+    </div>
+  </div>
+
+  <button id="btn-all" class="btn-all">全章まとめて模擬試験（116問・全問収録）</button>
+
+  <div class="section-label">章を選んで練習</div>
+  <div id="chapter-grid" class="chapter-grid"></div>
+</div>
+
+<!-- EXAM PAGE -->
+<div id="page-exam" class="page">
+  <div class="exam-header">
+    <h2 id="exam-title"></h2>
+    <div id="timer" class="timer">00:00</div>
+  </div>
+
+  <div class="progress-wrap">
+    <div id="progress-bar" class="progress-bar" style="width: 0%"></div>
+  </div>
+
+  <div class="question-card">
+    <div id="q-number" class="q-number"></div>
+    <div id="q-text" class="q-text"></div>
+    <ul id="options-list" class="options-list"></ul>
+    <div id="explanation" class="explanation-box"></div>
+  </div>
+
+  <div id="q-counter" style="text-align:center; font-size:13px; color:var(--text-muted); margin-bottom:12px;"></div>
+
+  <div class="nav-buttons">
+    <button id="btn-prev" class="btn btn-secondary">◀ 前の問題</button>
+    <button id="btn-reveal" class="btn btn-answer">答えを確認</button>
+    <button id="btn-next" class="btn btn-primary">次の問題 ▶</button>
+    <button id="btn-finish" class="btn btn-success" style="display:none">結果を見る</button>
+  </div>
+
+  <div style="text-align:center; margin-top:16px;">
+    <button id="btn-back-home" class="btn btn-secondary" style="font-size:13px; padding:8px 20px;">← チャプター選択に戻る</button>
+  </div>
+</div>
+
+<!-- RESULT PAGE -->
+<div id="page-result" class="page">
+  <div class="result-card">
+    <div id="score-circle" class="score-circle">
+      <div class="score-inner">
+        <div id="score-num" class="score-num">0</div>
+        <div id="score-denom" class="score-denom">/ 0</div>
+      </div>
+    </div>
+    <div id="result-title" class="result-title"></div>
+    <div id="result-pct" class="result-subtitle"></div>
+    <div id="pass-badge" class="pass-badge"></div>
+    <div id="result-time" style="font-size:13px; color:var(--text-muted); margin-top:4px;"></div>
+    <div style="display:flex; gap:12px; justify-content:center; margin-top:20px; flex-wrap:wrap;">
+      <button id="btn-retry" class="btn btn-primary">もう一度挑戦</button>
+      <button id="btn-result-home" class="btn btn-secondary">チャプター選択に戻る</button>
+    </div>
+  </div>
+
+  <div class="section-label">問題ごとの解説</div>
+  <div id="review-list" class="review-list"></div>
+
+  <div style="text-align:center; margin-top:24px;">
+    <button id="btn-result-home2" class="btn btn-secondary" onclick="renderHome()">← トップに戻る</button>
+  </div>
+</div>
+
+<script src="questions.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
