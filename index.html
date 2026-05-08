@@ -29,7 +29,17 @@
     </div>
   </div>
 
-  <button id="btn-all" class="btn-all">全章まとめて模擬試験（116問・全問収録）</button>
+  <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:24px;">
+    <button id="btn-mock" class="btn-all" style="background:linear-gradient(135deg,#e67e22,#d35400);">
+      🎯 本番形式 模擬試験（40問・出題率に沿ったランダム出題）
+    </button>
+    <button id="btn-ai" class="btn-all" style="background:linear-gradient(135deg,#8e44ad,#6c3483);">
+      🤖 AIオリジナル試験（40問・応用問題）
+    </button>
+    <button id="btn-all" class="btn-all" style="background:var(--primary);">
+      📚 全問練習（全問収録・章ごとに学習）
+    </button>
+  </div>
 
   <div class="section-label">章を選んで練習</div>
   <div id="chapter-grid" class="chapter-grid"></div>
@@ -95,6 +105,7 @@
 </div>
 
 <script src="questions.js"></script>
+<script src="ai_questions.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
