@@ -29,6 +29,7 @@ let state = {
   timerSec: 0,
   timerInterval: null,
   examFinished: false,
+  fromResult: false,  // 結果画面から問題に戻ってきたとき
 };
 
 // ---- 空白の可視化 ----
@@ -280,7 +281,11 @@ function renderQuestion() {
 
   document.getElementById('btn-prev').disabled = idx === 0;
   document.getElementById('btn-next').style.display = idx < total - 1 ? 'inline-block' : 'none';
-  document.getElementById('btn-finish').style.display = idx === total - 1 ? 'inline-block' : 'none';
+  // 結果画面から来た場合は「結果に戻る」を表示、試験中は「結果を見る」
+  document.getElementById('btn-finish').style.display =
+    (!state.fromResult && idx === total - 1) ? 'inline-block' : 'none';
+  document.getElementById('btn-back-result').style.display =
+    state.fromResult ? 'inline-block' : 'none';
   document.getElementById('btn-reveal').style.display = revealed ? 'none' : 'inline-block';
   document.getElementById('btn-reveal').disabled = selectedAns === null;
 }
@@ -318,7 +323,24 @@ function nextQuestion() {
 function finishExam() {
   stopTimer();
   state.examFinished = true;
+  state.fromResult = false;
   showResult();
+}
+
+// 結果画面から特定の問題へ遷移
+function goToQuestion(index) {
+  state.fromResult = true;
+  state.currentIndex = index;
+  // 試験終了後は全問の答えを表示済みにする
+  state.revealed = new Array(state.questions.length).fill(true);
+  showPage('page-exam');
+  renderQuestion();
+}
+
+// 問題画面から結果画面に戻る
+function backToResult() {
+  state.fromResult = false;
+  showPage('page-result');
 }
 
 // ---- Result ----
@@ -354,17 +376,34 @@ function showResult() {
 
     const item = document.createElement('div');
     item.className = `review-item ${isCorrect ? 'correct-item' : 'wrong-item'}`;
+    item.style.cursor = 'pointer';
+    item.title = 'クリックして問題を確認';
 
-    const qText = q.text.replace(/\n+/g, ' ').substring(0, 80) + (q.text.length > 80 ? '...' : '');
+    // 問題文を全文表示（コードブロックも含む）
+    const textLines = q.text.split('\n');
+    let mainLines = [], codeLines = [], inCode = false;
+    const codeStarters = ['print(','def ','for ','if ','while ','try:','class ','x =','s =','i =','lst =','d =','name =','result =','import ','from ','except','else:','elif ','return','del ','with ','raise','assert','a =','b =','n =','num =','obj =','f =','count','square','func','my','animal','dog','data','value'];
+    for (const line of textLines) {
+      const stripped = line.trim();
+      if (!inCode && (codeStarters.some(s => stripped.startsWith(s)) || line.startsWith('    ') || stripped.startsWith('#'))) inCode = true;
+      if (inCode) codeLines.push(line); else mainLines.push(line);
+    }
+    let qHtml = `<div class="review-q-text">${i + 1}. ${escapeHtml(mainLines.join('\n'))}</div>`;
+    if (codeLines.length > 0) {
+      qHtml += `<div class="code-block" style="font-size:12px;padding:10px 14px;margin:8px 0;">${escapeHtml(codeLines.join('\n'))}</div>`;
+    }
 
     item.innerHTML = `
-      <div class="review-q">${i + 1}. ${escapeHtml(qText)}</div>
+      ${qHtml}
+      <div class="review-nav-hint">🔍 クリックして問題に移動</div>
       <div class="review-answer">
         あなたの回答: <span class="${isCorrect ? 'correct-ans' : 'wrong-ans'}">${userAns !== null ? LETTERS[userAns] + '. ' + escapeHtml(q.options[userAns]) : '未回答'}</span>
       </div>
       ${!isCorrect ? `<div class="review-answer">正解: <span class="correct-ans">${LETTERS[q.answer]}. ${escapeHtml(q.options[q.answer])}</span></div>` : ''}
       <div class="review-explanation">${escapeHtml(q.explanation)}</div>
     `;
+
+    item.addEventListener('click', () => goToQuestion(i));
     reviewList.appendChild(item);
   });
 }
@@ -382,6 +421,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-reveal').addEventListener('click', revealAnswer);
   document.getElementById('btn-finish').addEventListener('click', finishExam);
   document.getElementById('btn-back-home').addEventListener('click', renderHome);
+  document.getElementById('btn-back-result').addEventListener('click', backToResult);
   document.getElementById('btn-retry').addEventListener('click', () => {
     if (state.examType === 'mock') startMockExam();
     else if (state.examType === 'ai') startAIExam();
