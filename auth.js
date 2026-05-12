@@ -34,14 +34,15 @@ const AUTH = (() => {
   // ---- パスワードのハッシュ化（Web Crypto API / SHA-256 + ソルト） ----
   function _generateSalt() {
     const arr = new Uint8Array(16);
-    crypto.getRandomValues(arr);
+    (window.crypto || crypto).getRandomValues(arr);
     return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
   async function _hashPassword(password, salt) {
     const encoder = new TextEncoder();
     const data    = encoder.encode(salt + ':' + password);
-    const buf     = await crypto.subtle.digest('SHA-256', data);
+    const subtle  = (window.crypto || crypto).subtle;
+    const buf     = await subtle.digest('SHA-256', data);
     return Array.from(new Uint8Array(buf))
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
@@ -100,7 +101,7 @@ const AUTH = (() => {
 
     } catch (e) {
       console.error('Register error:', e);
-      return { error: '登録中にエラーが発生しました' };
+      return { error: '登録中にエラーが発生しました: ' + (e && e.message ? e.message : String(e)) };
     }
   }
 
@@ -126,7 +127,7 @@ const AUTH = (() => {
 
     } catch (e) {
       console.error('Login error:', e);
-      return { error: 'ログイン中にエラーが発生しました' };
+      return { error: 'ログイン中にエラーが発生しました: ' + (e && e.message ? e.message : String(e)) };
     }
   }
 
