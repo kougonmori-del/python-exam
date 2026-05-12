@@ -1,7 +1,6 @@
 const LETTERS = ['A', 'B', 'C', 'D'];
 const PASS_RATE = 0.7;
 
-// 本番試験の出題分布（40問）
 const MOCK_DISTRIBUTION = [
   { id: 1,  count: 1 },
   { id: 2,  count: 1 },
@@ -22,74 +21,24 @@ let state = {
   mode: 'home',
   questions: [],
   currentIndex: 0,
+  // answers[i] = 選んだ選択肢の originalIndex（元データでの位置）。null は未回答。
   answers: [],
   revealed: [],
+  // shuffledOptions[i] = [{text, originalIndex}, ...] シャッフル済み選択肢配列
+  shuffledOptions: [],
   chapterId: null,
-  examType: 'chapter', // 'chapter' | 'all' | 'mock' | 'ai'
+  examType: 'chapter',
   timerSec: 0,
   timerInterval: null,
   examFinished: false,
-  fromResult: false,  // 結果画面から問題に戻ってきたとき
+  fromResult: false,
 };
 
-// ---- 空白の可視化 ----
-function formatOptionText(text) {
-  const escaped = escapeHtml(text);
-  // 2文字以上の連続スペースを可視化
-  return escaped.replace(/( {2,})|( {1})(?=[^ ]|$)/g, (match, multi, single) => {
-    if (multi) {
-      return multi.split('').map(() => '<span class="visible-space"> </span>').join('');
-    }
-    return match;
-  }).replace(/^( +)/g, (spaces) =>
-    spaces.split('').map(() => '<span class="visible-space"> </span>').join('')
-  );
-}
-
+// ---- ユーティリティ ----
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// ---- 問題文のHTMLレンダリング ----
-function renderQuestionText(text) {
-  const lines = text.split('\n');
-  let mainLines = [];
-  let codeLines = [];
-  let inCode = false;
-
-  const codeStarters = [
-    'print(', 'def ', 'for ', 'if ', 'while ', 'try:', 'class ',
-    'x =', 's =', 'i =', 'lst =', 'd =', 'name =', 'result =',
-    'import ', 'from ', 'except', 'else:', 'elif ', 'return',
-    'del ', 'with ', 'raise', 'assert', 'a =', 'b =', 'n =',
-    'num =', 'obj =', 'f =', 'count', 'square', 'func', 'my',
-    'animal', 'dog', 'cat', 'data', 'value', 'items', 'keys'
-  ];
-
-  for (const line of lines) {
-    const stripped = line.trim();
-    if (!inCode && (
-      codeStarters.some(s => stripped.startsWith(s)) ||
-      line.startsWith('    ') ||
-      stripped.startsWith('#')
-    )) {
-      inCode = true;
-    }
-    if (inCode) {
-      codeLines.push(line);
-    } else {
-      mainLines.push(line);
-    }
-  }
-
-  let html = `<div>${escapeHtml(mainLines.join('\n'))}</div>`;
-  if (codeLines.length > 0) {
-    html += `<div class="code-block">${escapeHtml(codeLines.join('\n'))}</div>`;
-  }
-  return html;
-}
-
-// ---- ランダム選択 ----
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -99,16 +48,59 @@ function shuffle(arr) {
   return a;
 }
 
-function selectMockQuestions() {
-  let selected = [];
-  for (const { id, count } of MOCK_DISTRIBUTION) {
-    const ch = CHAPTERS.find(c => c.id === id);
-    if (!ch) continue;
-    const pool = shuffle(ch.questions);
-    const taken = pool.slice(0, Math.min(count, pool.length));
-    taken.forEach(q => selected.push({ ...q, chapterTitle: ch.title }));
+// 問題ごとに選択肢をシャッフルし、元の位置(originalIndex)を保持する
+function generateShuffledOptions(questions) {
+  return questions.map(q =>
+    shuffle(q.options.map((text, originalIndex) => ({ text, originalIndex })))
+  );
+}
+
+// ---- 空白の可視化 ----
+function makeSpacesVisible(escapedText) {
+  return escapedText.replace(/ /g, '<span class="visible-space">_</span>');
+}
+
+function buildOptionHtml(text) {
+  const hasLeadingSpaces = /^ +/.test(text);
+  const hasMultiSpaces   = / {2,}/.test(text);
+  if (hasLeadingSpaces || hasMultiSpaces) {
+    return `<span class="option-code">${makeSpacesVisible(escapeHtml(text))}</span>`;
   }
-  return selected;
+  return escapeHtml(text);
+}
+
+// ---- 問題文レンダリング ----
+const CODE_STARTERS = [
+  'print(','def ','for ','if ','while ','try:','class ',
+  'x =','s =','i =','lst =','d =','name =','result =',
+  'import ','from ','except','else:','elif ','return',
+  'del ','with ','raise','assert','a =','b =','n =',
+  'num =','obj =','f =','count','square','func','my',
+  'animal','dog','cat','data','value','items','keys',
+];
+
+function splitTextAndCode(text) {
+  const lines = text.split('\n');
+  let mainLines = [], codeLines = [], inCode = false;
+  for (const line of lines) {
+    const stripped = line.trim();
+    if (!inCode && (
+      CODE_STARTERS.some(s => stripped.startsWith(s)) ||
+      line.startsWith('    ') ||
+      stripped.startsWith('#')
+    )) inCode = true;
+    if (inCode) codeLines.push(line); else mainLines.push(line);
+  }
+  return { mainLines, codeLines };
+}
+
+function renderQuestionText(text) {
+  const { mainLines, codeLines } = splitTextAndCode(text);
+  let html = `<div>${escapeHtml(mainLines.join('\n'))}</div>`;
+  if (codeLines.length > 0) {
+    html += `<div class="code-block">${escapeHtml(codeLines.join('\n'))}</div>`;
+  }
+  return html;
 }
 
 // ---- Pages ----
@@ -125,7 +117,6 @@ function renderHome() {
 
   const grid = document.getElementById('chapter-grid');
   grid.innerHTML = '';
-
   CHAPTERS.forEach(ch => {
     const card = document.createElement('div');
     card.className = 'chapter-card';
@@ -146,7 +137,7 @@ function renderHome() {
 // ---- Exam Start ----
 function startExam(chapterId) {
   state.chapterId = chapterId;
-  state.examType = 'chapter';
+  state.examType  = 'chapter';
   state.examFinished = false;
 
   if (chapterId === null) {
@@ -158,12 +149,15 @@ function startExam(chapterId) {
     state.questions = ch.questions.map(q => ({ ...q, chapterTitle: ch.title }));
   }
 
-  initExam(chapterId === null ? '全章 練習モード' : CHAPTERS.find(c => c.id === chapterId).title);
+  initExam(chapterId === null
+    ? '全章 練習モード'
+    : CHAPTERS.find(c => c.id === chapterId).title
+  );
 }
 
 function startMockExam() {
   state.chapterId = null;
-  state.examType = 'mock';
+  state.examType  = 'mock';
   state.examFinished = false;
   state.questions = selectMockQuestions();
   initExam('本番形式 模擬試験（40問）');
@@ -171,7 +165,7 @@ function startMockExam() {
 
 function startAIExam() {
   state.chapterId = null;
-  state.examType = 'ai';
+  state.examType  = 'ai';
   state.examFinished = false;
   state.questions = shuffle(AI_QUESTIONS).slice(0, 40).map(q => ({
     ...q, chapterTitle: 'AIオリジナル'
@@ -179,12 +173,27 @@ function startAIExam() {
   initExam('AIオリジナル試験（40問）');
 }
 
+function selectMockQuestions() {
+  const selected = [];
+  for (const { id, count } of MOCK_DISTRIBUTION) {
+    const ch = CHAPTERS.find(c => c.id === id);
+    if (!ch) continue;
+    shuffle(ch.questions)
+      .slice(0, Math.min(count, ch.questions.length))
+      .forEach(q => selected.push({ ...q, chapterTitle: ch.title }));
+  }
+  return selected;
+}
+
 function initExam(title) {
-  state.currentIndex = 0;
-  state.answers = new Array(state.questions.length).fill(null);
-  state.revealed = new Array(state.questions.length).fill(false);
-  state.timerSec = 0;
-  state.mode = 'exam';
+  state.currentIndex    = 0;
+  state.answers         = new Array(state.questions.length).fill(null);
+  state.revealed        = new Array(state.questions.length).fill(false);
+  state.shuffledOptions = generateShuffledOptions(state.questions);
+  state.timerSec        = 0;
+  state.mode            = 'exam';
+  state.fromResult      = false;
+
   showPage('page-exam');
   document.getElementById('exam-title').textContent = title;
   startTimer();
@@ -196,23 +205,15 @@ function startTimer() {
   stopTimer();
   state.timerSec = 0;
   updateTimerDisplay();
-  state.timerInterval = setInterval(() => {
-    state.timerSec++;
-    updateTimerDisplay();
-  }, 1000);
+  state.timerInterval = setInterval(() => { state.timerSec++; updateTimerDisplay(); }, 1000);
 }
 
 function stopTimer() {
-  if (state.timerInterval) {
-    clearInterval(state.timerInterval);
-    state.timerInterval = null;
-  }
+  if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
 }
 
 function formatTime(sec) {
-  const m = Math.floor(sec / 60).toString().padStart(2, '0');
-  const s = (sec % 60).toString().padStart(2, '0');
-  return `${m}:${s}`;
+  return `${Math.floor(sec/60).toString().padStart(2,'0')}:${(sec%60).toString().padStart(2,'0')}`;
 }
 
 function updateTimerDisplay() {
@@ -226,51 +227,50 @@ function updateTimerDisplay() {
 
 // ---- Question Render ----
 function renderQuestion() {
-  const q = state.questions[state.currentIndex];
-  const total = state.questions.length;
-  const idx = state.currentIndex;
+  const q        = state.questions[state.currentIndex];
+  const idx      = state.currentIndex;
+  const total    = state.questions.length;
   const revealed = state.revealed[idx];
-  const selectedAns = state.answers[idx];
+  // answers[idx] = 選択済みの originalIndex（null = 未選択）
+  const selectedOriginalIndex = state.answers[idx];
 
   document.getElementById('progress-bar').style.width = `${((idx + 1) / total) * 100}%`;
-  document.getElementById('q-counter').textContent = `問題 ${idx + 1} / ${total}`;
-  document.getElementById('q-number').textContent = `問題 ${idx + 1}`;
-  document.getElementById('q-text').innerHTML = renderQuestionText(q.text);
+  document.getElementById('q-counter').textContent    = `問題 ${idx + 1} / ${total}`;
+  document.getElementById('q-number').textContent     = `問題 ${idx + 1}`;
+  document.getElementById('q-text').innerHTML         = renderQuestionText(q.text);
 
-  const optList = document.getElementById('options-list');
+  // シャッフル済み選択肢でレンダリング
+  const shuffled = state.shuffledOptions[idx];
+  const optList  = document.getElementById('options-list');
   optList.innerHTML = '';
 
-  q.options.forEach((opt, i) => {
+  shuffled.forEach((opt, j) => {
+    // opt.originalIndex と q.answer を比較して正解判定
+    const isSelected = selectedOriginalIndex === opt.originalIndex;
+    const isCorrect  = q.answer             === opt.originalIndex;
+
     const li = document.createElement('li');
     li.className = 'option-item';
 
     if (revealed) {
-      if (i === q.answer) li.classList.add('correct');
-      else if (i === selectedAns && i !== q.answer) li.classList.add('wrong');
-    } else if (i === selectedAns) {
+      if (isCorrect)              li.classList.add('correct');
+      else if (isSelected)        li.classList.add('wrong');
+    } else if (isSelected) {
       li.classList.add('selected');
-    }
-
-    // 空白を可視化
-    const hasLeadingSpaces = /^ +/.test(opt);
-    const hasMultiSpaces = / {2,}/.test(opt);
-    let optHtml;
-    if (hasLeadingSpaces || hasMultiSpaces) {
-      optHtml = `<span class="option-code">${makeSpacesVisible(escapeHtml(opt))}</span>`;
-    } else {
-      optHtml = escapeHtml(opt);
     }
 
     li.innerHTML = `
       <label>
-        <input type="radio" name="option" value="${i}" ${selectedAns === i ? 'checked' : ''} ${revealed ? 'disabled' : ''}>
-        <span class="option-letter">${LETTERS[i]}</span>
-        <span>${optHtml}</span>
+        <input type="radio" name="option" value="${j}"
+          ${isSelected ? 'checked' : ''} ${revealed ? 'disabled' : ''}>
+        <span class="option-letter">${LETTERS[j]}</span>
+        <span>${buildOptionHtml(opt.text)}</span>
       </label>
     `;
 
+    // クリック時に originalIndex を保存（シャッフル位置 j ではない）
     if (!revealed) {
-      li.querySelector('label').addEventListener('click', () => selectOption(i));
+      li.querySelector('label').addEventListener('click', () => selectOption(opt.originalIndex));
     }
     optList.appendChild(li);
   });
@@ -280,23 +280,21 @@ function renderQuestion() {
   expBox.classList.toggle('show', revealed);
 
   document.getElementById('btn-prev').disabled = idx === 0;
-  document.getElementById('btn-next').style.display = idx < total - 1 ? 'inline-block' : 'none';
-  // 結果画面から来た場合は「結果に戻る」を表示、試験中は「結果を見る」
+  document.getElementById('btn-next').style.display =
+    idx < total - 1 ? 'inline-block' : 'none';
   document.getElementById('btn-finish').style.display =
     (!state.fromResult && idx === total - 1) ? 'inline-block' : 'none';
   document.getElementById('btn-back-result').style.display =
     state.fromResult ? 'inline-block' : 'none';
-  document.getElementById('btn-reveal').style.display = revealed ? 'none' : 'inline-block';
-  document.getElementById('btn-reveal').disabled = selectedAns === null;
+  document.getElementById('btn-reveal').style.display =
+    revealed ? 'none' : 'inline-block';
+  document.getElementById('btn-reveal').disabled = selectedOriginalIndex === null;
 }
 
-function makeSpacesVisible(escapedText) {
-  return escapedText.replace(/ /g, '<span class="visible-space">_</span>');
-}
-
-function selectOption(i) {
+// originalIndex を受け取って保存
+function selectOption(originalIndex) {
   if (state.revealed[state.currentIndex]) return;
-  state.answers[state.currentIndex] = i;
+  state.answers[state.currentIndex] = originalIndex;
   renderQuestion();
 }
 
@@ -307,37 +305,29 @@ function revealAnswer() {
 }
 
 function prevQuestion() {
-  if (state.currentIndex > 0) {
-    state.currentIndex--;
-    renderQuestion();
-  }
+  if (state.currentIndex > 0) { state.currentIndex--; renderQuestion(); }
 }
 
 function nextQuestion() {
-  if (state.currentIndex < state.questions.length - 1) {
-    state.currentIndex++;
-    renderQuestion();
-  }
+  if (state.currentIndex < state.questions.length - 1) { state.currentIndex++; renderQuestion(); }
 }
 
 function finishExam() {
   stopTimer();
   state.examFinished = true;
-  state.fromResult = false;
+  state.fromResult   = false;
   showResult();
 }
 
 // 結果画面から特定の問題へ遷移
 function goToQuestion(index) {
-  state.fromResult = true;
+  state.fromResult   = true;
   state.currentIndex = index;
-  // 試験終了後は全問の答えを表示済みにする
-  state.revealed = new Array(state.questions.length).fill(true);
+  state.revealed     = new Array(state.questions.length).fill(true);
   showPage('page-exam');
   renderQuestion();
 }
 
-// 問題画面から結果画面に戻る
 function backToResult() {
   state.fromResult = false;
   showPage('page-result');
@@ -349,57 +339,76 @@ function showResult() {
   showPage('page-result');
 
   const questions = state.questions;
-  const answers = state.answers;
-  const total = questions.length;
-  const correct = questions.filter((q, i) => answers[i] === q.answer).length;
-  const pct = Math.round((correct / total) * 100);
-  const passed = correct / total >= PASS_RATE;
+  const answers   = state.answers;
+  const total     = questions.length;
 
-  const circle = document.getElementById('score-circle');
-  circle.style.setProperty('--pct', pct);
-  document.getElementById('score-num').textContent = correct;
-  document.getElementById('score-denom').textContent = `/ ${total}`;
-  document.getElementById('result-title').textContent = `正解数 ${correct}問 / ${total}問`;
-  document.getElementById('result-pct').textContent = `正解率 ${pct}%`;
+  // 正解判定: answers[i]（originalIndex）=== q.answer（originalIndex）
+  const correctCount = questions.filter((q, i) => answers[i] === q.answer).length;
+  const pct    = Math.round((correctCount / total) * 100);
+  const passed = correctCount / total >= PASS_RATE;
+
+  document.getElementById('score-circle').style.setProperty('--pct', pct);
+  document.getElementById('score-num').textContent    = correctCount;
+  document.getElementById('score-denom').textContent  = `/ ${total}`;
+  document.getElementById('result-title').textContent = `正解数 ${correctCount}問 / ${total}問`;
+  document.getElementById('result-pct').textContent   = `正解率 ${pct}%`;
 
   const badge = document.getElementById('pass-badge');
   badge.textContent = passed ? '合格ライン達成！（70%以上）' : '不合格（70%未満）';
-  badge.className = `pass-badge ${passed ? 'pass' : 'fail'}`;
+  badge.className   = `pass-badge ${passed ? 'pass' : 'fail'}`;
   document.getElementById('result-time').textContent = `所要時間: ${formatTime(state.timerSec)}`;
 
   const reviewList = document.getElementById('review-list');
   reviewList.innerHTML = '';
 
   questions.forEach((q, i) => {
-    const userAns = answers[i];
-    const isCorrect = userAns === q.answer;
+    const selectedOriginalIndex = answers[i];
+    const isCorrect = selectedOriginalIndex === q.answer;
+    const shuffled  = state.shuffledOptions[i];
+
+    // ユーザーが選んだ選択肢のシャッフル位置（表示ラベル A/B/C/D）を求める
+    const selectedShuffledPos = shuffled
+      ? shuffled.findIndex(o => o.originalIndex === selectedOriginalIndex)
+      : -1;
+    const correctShuffledPos  = shuffled
+      ? shuffled.findIndex(o => o.originalIndex === q.answer)
+      : q.answer;
+
+    // 選択肢テキストは元データから取得（内容は不変）
+    const selectedText = selectedOriginalIndex !== null ? q.options[selectedOriginalIndex] : null;
+    const correctText  = q.options[q.answer];
+
+    const selectedLabel = selectedShuffledPos >= 0 ? LETTERS[selectedShuffledPos] + '. ' : '';
+    const correctLabel  = correctShuffledPos  >= 0 ? LETTERS[correctShuffledPos]  + '. ' : '';
+
+    // 問題文（コードブロック含む全文）
+    const { mainLines, codeLines } = splitTextAndCode(q.text);
+    let qHtml = `<div class="review-q-text">${i + 1}. ${escapeHtml(mainLines.join('\n'))}</div>`;
+    if (codeLines.length > 0) {
+      qHtml += `<div class="code-block" style="font-size:12px;padding:10px 14px;margin:8px 0;">${escapeHtml(codeLines.join('\n'))}</div>`;
+    }
 
     const item = document.createElement('div');
     item.className = `review-item ${isCorrect ? 'correct-item' : 'wrong-item'}`;
     item.style.cursor = 'pointer';
     item.title = 'クリックして問題を確認';
 
-    // 問題文を全文表示（コードブロックも含む）
-    const textLines = q.text.split('\n');
-    let mainLines = [], codeLines = [], inCode = false;
-    const codeStarters = ['print(','def ','for ','if ','while ','try:','class ','x =','s =','i =','lst =','d =','name =','result =','import ','from ','except','else:','elif ','return','del ','with ','raise','assert','a =','b =','n =','num =','obj =','f =','count','square','func','my','animal','dog','data','value'];
-    for (const line of textLines) {
-      const stripped = line.trim();
-      if (!inCode && (codeStarters.some(s => stripped.startsWith(s)) || line.startsWith('    ') || stripped.startsWith('#'))) inCode = true;
-      if (inCode) codeLines.push(line); else mainLines.push(line);
-    }
-    let qHtml = `<div class="review-q-text">${i + 1}. ${escapeHtml(mainLines.join('\n'))}</div>`;
-    if (codeLines.length > 0) {
-      qHtml += `<div class="code-block" style="font-size:12px;padding:10px 14px;margin:8px 0;">${escapeHtml(codeLines.join('\n'))}</div>`;
-    }
-
     item.innerHTML = `
       ${qHtml}
       <div class="review-nav-hint">🔍 クリックして問題に移動</div>
       <div class="review-answer">
-        あなたの回答: <span class="${isCorrect ? 'correct-ans' : 'wrong-ans'}">${userAns !== null ? LETTERS[userAns] + '. ' + escapeHtml(q.options[userAns]) : '未回答'}</span>
+        あなたの回答:
+        <span class="${isCorrect ? 'correct-ans' : 'wrong-ans'}">
+          ${selectedText !== null
+            ? escapeHtml(selectedLabel + selectedText)
+            : '未回答'}
+        </span>
       </div>
-      ${!isCorrect ? `<div class="review-answer">正解: <span class="correct-ans">${LETTERS[q.answer]}. ${escapeHtml(q.options[q.answer])}</span></div>` : ''}
+      ${!isCorrect
+        ? `<div class="review-answer">正解:
+             <span class="correct-ans">${escapeHtml(correctLabel + correctText)}</span>
+           </div>`
+        : ''}
       <div class="review-explanation">${escapeHtml(q.explanation)}</div>
     `;
 
@@ -423,9 +432,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-back-home').addEventListener('click', renderHome);
   document.getElementById('btn-back-result').addEventListener('click', backToResult);
   document.getElementById('btn-retry').addEventListener('click', () => {
-    if (state.examType === 'mock') startMockExam();
-    else if (state.examType === 'ai') startAIExam();
-    else startExam(state.chapterId);
+    if (state.examType === 'mock')      startMockExam();
+    else if (state.examType === 'ai')   startAIExam();
+    else                                startExam(state.chapterId);
   });
   document.getElementById('btn-result-home').addEventListener('click', renderHome);
 });
