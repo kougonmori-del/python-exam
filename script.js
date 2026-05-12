@@ -120,6 +120,7 @@ function renderHome() {
   CHAPTERS.forEach(ch => {
     const card = document.createElement('div');
     card.className = 'chapter-card';
+    card.dataset.chapterId = ch.id;
     card.innerHTML = `
       <div class="chapter-num">第${ch.id}章</div>
       <h3>${ch.title.replace(/^第\d+章 /, '')}</h3>
@@ -127,11 +128,15 @@ function renderHome() {
       <div class="chapter-footer">
         <span class="q-count">${ch.questions.length}問</span>
         <span class="rate-badge">出題率 ${ch.rate}%</span>
+        <span class="accuracy-badge" id="acc-${ch.id}" style="display:none"></span>
       </div>
     `;
     card.addEventListener('click', () => startExam(ch.id));
     grid.appendChild(card);
   });
+
+  // ログイン中なら正答率バッジを非同期で表示
+  renderChapterAccuracyBadges();
 }
 
 // ---- Exam Start ----
@@ -312,11 +317,31 @@ function nextQuestion() {
   if (state.currentIndex < state.questions.length - 1) { state.currentIndex++; renderQuestion(); }
 }
 
-function finishExam() {
+async function finishExam() {
   stopTimer();
   state.examFinished = true;
   state.fromResult   = false;
-  showResult();
+  showResult(); // 結果画面を先に表示してから履歴保存（UXを妨げない）
+
+  try {
+    const user = await AUTH.getCurrentUser();
+    if (user) {
+      const result = await HISTORY.saveSession({
+        examType:  state.examType,
+        chapterId: state.chapterId,
+        questions: state.questions,
+        answers:   state.answers,
+        timeSec:   state.timerSec,
+      });
+      if (result.success) {
+        showToast('解答履歴を保存しました');
+      } else {
+        showToast('履歴の保存に失敗しました', 'error');
+      }
+    }
+  } catch (e) {
+    console.error('History save error:', e);
+  }
 }
 
 // 結果画面から特定の問題へ遷移
@@ -417,10 +442,191 @@ function showResult() {
   });
 }
 
+// ============================================================
+// ---- Toast 通知 ----
+// ============================================================
+function showToast(message, type = 'success') {
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.textContent = message;
+  document.body.appendChild(t);
+  requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('toast-show')));
+  setTimeout(() => {
+    t.classList.remove('toast-show');
+    t.addEventListener('transitionend', () => t.remove(), { once: true });
+  }, 3000);
+}
+
+// ============================================================
+// ---- ヘッダーの認証エリア更新 ----
+// ============================================================
+async function updateHeaderAuth() {
+  const area = document.getElementById('header-auth-area');
+  if (!area) return;
+
+  if (!AUTH.ready) {
+    area.innerHTML = '';
+    return;
+  }
+
+  const user = await AUTH.getCurrentUser();
+
+  if (user) {
+    area.innerHTML = `
+      <div class="header-user-info">
+        <span class="header-username">${escapeHtml(user.username)}</span>
+        <button id="btn-header-history" class="btn-header-link">履歴</button>
+        <button id="btn-header-logout" class="btn-header-link btn-header-logout">ログアウト</button>
+      </div>
+    `;
+    document.getElementById('btn-header-history').addEventListener('click', renderHistory);
+    document.getElementById('btn-header-logout').addEventListener('click', async () => {
+      await AUTH.logout();
+      await updateHeaderAuth();
+      showToast('ログアウトしました', 'info');
+      if (state.mode !== 'home') renderHome();
+    });
+  } else {
+    area.innerHTML = `
+      <button id="btn-header-login" class="btn-header-link">ログイン / 登録</button>
+    `;
+    document.getElementById('btn-header-login').addEventListener('click', () => renderAuth('login'));
+  }
+}
+
+// ============================================================
+// ---- 章カードの正答率バッジ（非同期・ログイン時のみ） ----
+// ============================================================
+async function renderChapterAccuracyBadges() {
+  try {
+    const user = await AUTH.getCurrentUser();
+    if (!user) return;
+
+    const accuracy = await HISTORY.getChapterAccuracy();
+    for (const [chId, pct] of Object.entries(accuracy)) {
+      const el = document.getElementById(`acc-${chId}`);
+      if (el) {
+        el.textContent = `正答率 ${pct}%`;
+        el.style.display = 'inline-block';
+        el.className = `accuracy-badge ${pct >= 70 ? 'acc-good' : 'acc-bad'}`;
+      }
+    }
+  } catch (e) {
+    // バッジはサブ機能なので失敗してもサイレントに処理
+  }
+}
+
+// ============================================================
+// ---- 認証タブ切り替え ----
+// ============================================================
+function switchAuthTab(mode) {
+  const loginForm    = document.getElementById('auth-login-form');
+  const registerForm = document.getElementById('auth-register-form');
+  const tabLogin     = document.getElementById('tab-login');
+  const tabRegister  = document.getElementById('tab-register');
+
+  document.getElementById('login-error').textContent    = '';
+  document.getElementById('register-error').textContent = '';
+
+  if (mode === 'login') {
+    loginForm.style.display    = 'block';
+    registerForm.style.display = 'none';
+    tabLogin.classList.add('active');
+    tabRegister.classList.remove('active');
+  } else {
+    loginForm.style.display    = 'none';
+    registerForm.style.display = 'block';
+    tabLogin.classList.remove('active');
+    tabRegister.classList.add('active');
+  }
+}
+
+// ============================================================
+// ---- 認証ページ表示 ----
+// ============================================================
+function renderAuth(mode = 'login') {
+  showPage('page-auth');
+  switchAuthTab(mode);
+  document.getElementById('login-username').value  = '';
+  document.getElementById('login-password').value  = '';
+  document.getElementById('reg-username').value    = '';
+  document.getElementById('reg-password').value    = '';
+  document.getElementById('reg-password2').value   = '';
+}
+
+// ============================================================
+// ---- 解答履歴ページ表示 ----
+// ============================================================
+async function renderHistory() {
+  const user = await AUTH.getCurrentUser();
+  if (!user) {
+    renderAuth('login');
+    showToast('履歴を見るにはログインが必要です', 'error');
+    return;
+  }
+
+  showPage('page-history');
+  const listEl = document.getElementById('history-list');
+  listEl.innerHTML = '<div class="history-loading">読み込み中...</div>';
+
+  const { data: sessions, error } = await HISTORY.getSessions(30);
+
+  if (error) {
+    listEl.innerHTML = '<div class="auth-error" style="margin:16px 0; text-align:center;">履歴の取得に失敗しました</div>';
+    return;
+  }
+
+  if (!sessions || sessions.length === 0) {
+    listEl.innerHTML = `
+      <div class="history-empty">
+        まだ解答履歴はありません。<br>
+        試験を解いて記録を残しましょう！
+      </div>
+    `;
+    return;
+  }
+
+  const MODE_LABELS = {
+    chapter: (id) => `第${id}章`,
+    all:     ()   => '全章練習',
+    mock:    ()   => '模擬試験',
+    ai:      ()   => 'AIオリジナル',
+  };
+
+  listEl.innerHTML = sessions.map(s => {
+    const date = new Date(s.taken_at).toLocaleString('ja-JP', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+    });
+    const pct       = Math.round((s.correct_count / s.total_questions) * 100);
+    const modeLabel = escapeHtml((MODE_LABELS[s.exam_type] || (() => s.exam_type))(s.chapter_id));
+    const time      = formatTime(s.time_sec);
+    const passClass = s.passed ? 'pass' : 'fail';
+
+    return `
+      <div class="history-item history-${passClass}">
+        <div class="history-meta">
+          <span class="history-date">${escapeHtml(date)}</span>
+          <span class="history-mode-badge">${modeLabel}</span>
+        </div>
+        <div class="history-score-row">
+          <span class="history-score-text">${s.correct_count}/${s.total_questions}問</span>
+          <span class="history-pct">${pct}%</span>
+          <span class="pass-badge ${passClass}" style="font-size:12px; padding:3px 10px;">${s.passed ? '合格' : '不合格'}</span>
+          <span class="history-time-text">⏱ ${escapeHtml(time)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ============================================================
 // ---- Init ----
+// ============================================================
 document.addEventListener('DOMContentLoaded', () => {
   renderHome();
 
+  // 既存のボタン
   document.getElementById('logo-link').addEventListener('click', renderHome);
   document.getElementById('btn-all').addEventListener('click', () => startExam(null));
   document.getElementById('btn-mock').addEventListener('click', startMockExam);
@@ -428,7 +634,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-prev').addEventListener('click', prevQuestion);
   document.getElementById('btn-next').addEventListener('click', nextQuestion);
   document.getElementById('btn-reveal').addEventListener('click', revealAnswer);
-  document.getElementById('btn-finish').addEventListener('click', finishExam);
+  document.getElementById('btn-finish').addEventListener('click', () => finishExam().catch(console.error));
   document.getElementById('btn-back-home').addEventListener('click', renderHome);
   document.getElementById('btn-back-result').addEventListener('click', backToResult);
   document.getElementById('btn-retry').addEventListener('click', () => {
@@ -437,4 +643,77 @@ document.addEventListener('DOMContentLoaded', () => {
     else                                startExam(state.chapterId);
   });
   document.getElementById('btn-result-home').addEventListener('click', renderHome);
+
+  // 認証タブ
+  document.getElementById('tab-login').addEventListener('click', () => switchAuthTab('login'));
+  document.getElementById('tab-register').addEventListener('click', () => switchAuthTab('register'));
+
+  // ログインフォーム送信
+  document.getElementById('btn-do-login').addEventListener('click', async () => {
+    const btn    = document.getElementById('btn-do-login');
+    const errEl  = document.getElementById('login-error');
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+
+    btn.disabled   = true;
+    btn.textContent = 'ログイン中...';
+    errEl.textContent = '';
+
+    const result = await AUTH.login(username, password);
+
+    btn.disabled    = false;
+    btn.textContent = 'ログイン';
+
+    if (result.error) {
+      errEl.textContent = result.error;
+      return;
+    }
+
+    await updateHeaderAuth();
+    showToast(`ようこそ、${escapeHtml(result.username)}さん！`);
+    renderHome();
+  });
+
+  // Enterキーでもログイン送信
+  ['login-username', 'login-password'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('btn-do-login').click();
+    });
+  });
+
+  // 新規登録フォーム送信
+  document.getElementById('btn-do-register').addEventListener('click', async () => {
+    const btn       = document.getElementById('btn-do-register');
+    const errEl     = document.getElementById('register-error');
+    const username  = document.getElementById('reg-username').value.trim();
+    const password  = document.getElementById('reg-password').value;
+    const password2 = document.getElementById('reg-password2').value;
+
+    btn.disabled    = true;
+    btn.textContent = '作成中...';
+    errEl.textContent = '';
+
+    const result = await AUTH.register(username, password, password2);
+
+    btn.disabled    = false;
+    btn.textContent = 'アカウントを作成';
+
+    if (result.error) {
+      errEl.textContent = result.error;
+      return;
+    }
+
+    await updateHeaderAuth();
+    showToast(`アカウント「${escapeHtml(result.username)}」を作成しました！`);
+    renderHome();
+  });
+
+  // 認証状態の変化を監視
+  AUTH.onAuthChange(() => {
+    updateHeaderAuth();
+    if (state.mode === 'home') renderChapterAccuracyBadges();
+  });
+
+  // 初期認証状態を確認してヘッダーを更新
+  updateHeaderAuth();
 });
