@@ -1,6 +1,6 @@
 // ============================================================
-// auth.js — localStorage版（外部サービス不要）
-// bcryptjs でパスワードをハッシュ化し、すべてブラウザ内に保存します
+// auth.js — localStorage版（外部ライブラリ不要）
+// ブラウザ組み込みの Web Crypto API でパスワードをハッシュ化します
 // ============================================================
 
 const AUTH = (() => {
@@ -29,6 +29,22 @@ const AUTH = (() => {
 
   function _generateId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  }
+
+  // ---- パスワードのハッシュ化（Web Crypto API / SHA-256 + ソルト） ----
+  function _generateSalt() {
+    const arr = new Uint8Array(16);
+    crypto.getRandomValues(arr);
+    return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function _hashPassword(password, salt) {
+    const encoder = new TextEncoder();
+    const data    = encoder.encode(salt + ':' + password);
+    const buf     = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(buf))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   // ---- バリデーション ----
@@ -65,21 +81,20 @@ const AUTH = (() => {
     }
 
     try {
-      // bcryptjs でパスワードをハッシュ化（平文保存しない）
-      const salt         = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(password, salt);
+      const salt         = _generateSalt();
+      const passwordHash = await _hashPassword(password, salt);
 
       const newUser = {
         id: _generateId(),
         username: name,
         passwordHash,
+        salt,
         createdAt: new Date().toISOString(),
       };
 
       users.push(newUser);
       _saveUsers(users);
 
-      // 登録後は自動ログイン
       _saveSession({ userId: newUser.id, username: newUser.username });
       return { success: true, username: newUser.username };
 
@@ -92,7 +107,7 @@ const AUTH = (() => {
   // ---- ログイン ----
   async function login(username, password) {
     const name = (username || '').trim();
-    if (!name)    return { error: 'アカウント名を入力してください' };
+    if (!name)     return { error: 'アカウント名を入力してください' };
     if (!password) return { error: 'パスワードを入力してください' };
 
     const users = _getUsers();
@@ -101,9 +116,10 @@ const AUTH = (() => {
     if (!user) return { error: 'アカウント名またはパスワードが正しくありません' };
 
     try {
-      // bcryptjs でハッシュを照合
-      const ok = await bcrypt.compare(password, user.passwordHash);
-      if (!ok) return { error: 'アカウント名またはパスワードが正しくありません' };
+      const computedHash = await _hashPassword(password, user.salt);
+      if (computedHash !== user.passwordHash) {
+        return { error: 'アカウント名またはパスワードが正しくありません' };
+      }
 
       _saveSession({ userId: user.id, username: user.username });
       return { success: true, username: user.username };
@@ -119,9 +135,9 @@ const AUTH = (() => {
     _saveSession(null);
   }
 
-  // ---- 現在のユーザーを取得（null = 未ログイン） ----
+  // ---- 現在のユーザー取得（null = 未ログイン） ----
   async function getCurrentUser() {
-    return _getSession(); // { userId, username } または null
+    return _getSession();
   }
 
   // ---- 認証状態の変化を購読（別タブ対応） ----
@@ -137,6 +153,6 @@ const AUTH = (() => {
     logout,
     getCurrentUser,
     onAuthChange,
-    get ready() { return true; }, // 外部サービス不要なので常に true
+    get ready() { return true; },
   };
 })();
