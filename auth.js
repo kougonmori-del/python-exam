@@ -1,15 +1,35 @@
 // ============================================================
-// auth.js — 登録・ログイン・ログアウト・セッション管理
-// supabase-config.js の後に読み込んでください
+// auth.js — localStorage版（外部サービス不要）
+// bcryptjs でパスワードをハッシュ化し、すべてブラウザ内に保存します
 // ============================================================
 
 const AUTH = (() => {
-  // Supabase Auth はメール形式が必要なため、内部的にダミードメインを使用
-  // ユーザーにはアカウント名のみ入力させ、メールは一切表示しない
-  const _DOMAIN = '@pyexam.local';
-  const _toEmail = (name) => `${name.toLowerCase().trim()}${_DOMAIN}`;
+  const USERS_KEY   = 'pyexam_users';
+  const SESSION_KEY = 'pyexam_session';
 
-  let _cachedUsername = null;
+  // ---- ストレージ操作 ----
+  function _getUsers() {
+    try { return JSON.parse(localStorage.getItem(USERS_KEY) || '[]'); }
+    catch { return []; }
+  }
+
+  function _saveUsers(users) {
+    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  }
+
+  function _getSession() {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); }
+    catch { return null; }
+  }
+
+  function _saveSession(data) {
+    if (data) localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+    else      localStorage.removeItem(SESSION_KEY);
+  }
+
+  function _generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  }
 
   // ---- バリデーション ----
   function _validateUsername(name) {
@@ -28,8 +48,6 @@ const AUTH = (() => {
 
   // ---- 新規登録 ----
   async function register(username, password, password2) {
-    if (!SUPABASE_READY) return { error: 'Supabaseが設定されていません（supabase-config.jsを確認してください）' };
-
     const usernameErr = _validateUsername(username);
     if (usernameErr) return { error: usernameErr };
 
@@ -38,47 +56,32 @@ const AUTH = (() => {
 
     if (password !== password2) return { error: 'パスワードが一致しません' };
 
-    const name = username.trim();
+    const name  = username.trim();
+    const users = _getUsers();
+
+    // 重複チェック（大文字小文字を区別しない）
+    if (users.some(u => u.username.toLowerCase() === name.toLowerCase())) {
+      return { error: 'このアカウント名はすでに使用されています' };
+    }
 
     try {
-      // フロントエンド事前チェック（大文字小文字を区別せず重複確認）
-      const { data: existing } = await _sb
-        .from('profiles')
-        .select('username')
-        .ilike('username', name)
-        .maybeSingle();
+      // bcryptjs でパスワードをハッシュ化（平文保存しない）
+      const salt         = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(password, salt);
 
-      if (existing) return { error: 'このアカウント名はすでに使用されています' };
+      const newUser = {
+        id: _generateId(),
+        username: name,
+        passwordHash,
+        createdAt: new Date().toISOString(),
+      };
 
-      // Supabase Auth でユーザー作成（パスワードはbcryptで自動ハッシュ化）
-      const { data, error: signUpErr } = await _sb.auth.signUp({
-        email:    _toEmail(name),
-        password: password,
-      });
+      users.push(newUser);
+      _saveUsers(users);
 
-      if (signUpErr) {
-        if (signUpErr.message?.includes('already registered')) {
-          return { error: 'このアカウント名はすでに使用されています' };
-        }
-        return { error: 'アカウント作成に失敗しました: ' + signUpErr.message };
-      }
-
-      if (!data?.user) return { error: 'アカウント作成に失敗しました' };
-
-      // profiles テーブルにユーザー名を登録（DB の UNIQUE 制約が最終チェック）
-      const { error: profileErr } = await _sb
-        .from('profiles')
-        .insert({ id: data.user.id, username: name });
-
-      if (profileErr) {
-        if (profileErr.code === '23505') {
-          return { error: 'このアカウント名はすでに使用されています' };
-        }
-        return { error: 'プロフィール登録に失敗しました' };
-      }
-
-      _cachedUsername = name;
-      return { success: true, username: name };
+      // 登録後は自動ログイン
+      _saveSession({ userId: newUser.id, username: newUser.username });
+      return { success: true, username: newUser.username };
 
     } catch (e) {
       console.error('Register error:', e);
@@ -88,29 +91,22 @@ const AUTH = (() => {
 
   // ---- ログイン ----
   async function login(username, password) {
-    if (!SUPABASE_READY) return { error: 'Supabaseが設定されていません' };
-
     const name = (username || '').trim();
     if (!name)    return { error: 'アカウント名を入力してください' };
     if (!password) return { error: 'パスワードを入力してください' };
 
+    const users = _getUsers();
+    const user  = users.find(u => u.username.toLowerCase() === name.toLowerCase());
+
+    if (!user) return { error: 'アカウント名またはパスワードが正しくありません' };
+
     try {
-      const { data, error: signInErr } = await _sb.auth.signInWithPassword({
-        email:    _toEmail(name),
-        password: password,
-      });
+      // bcryptjs でハッシュを照合
+      const ok = await bcrypt.compare(password, user.passwordHash);
+      if (!ok) return { error: 'アカウント名またはパスワードが正しくありません' };
 
-      if (signInErr) return { error: 'アカウント名またはパスワードが正しくありません' };
-
-      // profiles から正式なユーザー名（元の大文字小文字）を取得
-      const { data: profile } = await _sb
-        .from('profiles')
-        .select('username')
-        .eq('id', data.user.id)
-        .maybeSingle();
-
-      _cachedUsername = profile?.username || name;
-      return { success: true, username: _cachedUsername };
+      _saveSession({ userId: user.id, username: user.username });
+      return { success: true, username: user.username };
 
     } catch (e) {
       console.error('Login error:', e);
@@ -120,50 +116,18 @@ const AUTH = (() => {
 
   // ---- ログアウト ----
   async function logout() {
-    if (!SUPABASE_READY) return;
-    try {
-      await _sb.auth.signOut();
-    } catch (e) {
-      console.error('Logout error:', e);
-    } finally {
-      _cachedUsername = null;
-    }
+    _saveSession(null);
   }
 
-  // ---- 現在のユーザー取得（null = 未ログイン）----
+  // ---- 現在のユーザーを取得（null = 未ログイン） ----
   async function getCurrentUser() {
-    if (!SUPABASE_READY || !_sb) return null;
-    try {
-      const { data: { session } } = await _sb.auth.getSession();
-      if (!session) return null;
-
-      // キャッシュがあればネットワーク不要
-      if (_cachedUsername) {
-        return { id: session.user.id, username: _cachedUsername };
-      }
-
-      // 初回のみ profiles を参照
-      const { data: profile } = await _sb
-        .from('profiles')
-        .select('username')
-        .eq('id', session.user.id)
-        .maybeSingle();
-
-      _cachedUsername = profile?.username || null;
-      return _cachedUsername ? { id: session.user.id, username: _cachedUsername } : null;
-
-    } catch (e) {
-      console.error('getCurrentUser error:', e);
-      return null;
-    }
+    return _getSession(); // { userId, username } または null
   }
 
-  // ---- 認証状態の変化を購読 ----
+  // ---- 認証状態の変化を購読（別タブ対応） ----
   function onAuthChange(callback) {
-    if (!SUPABASE_READY || !_sb) return;
-    _sb.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') _cachedUsername = null;
-      callback(event, session);
+    window.addEventListener('storage', e => {
+      if (e.key === SESSION_KEY) callback();
     });
   }
 
@@ -173,6 +137,6 @@ const AUTH = (() => {
     logout,
     getCurrentUser,
     onAuthChange,
-    get ready() { return SUPABASE_READY; },
+    get ready() { return true; }, // 外部サービス不要なので常に true
   };
 })();
