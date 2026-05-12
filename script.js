@@ -142,7 +142,7 @@ function renderHome() {
 // ---- Exam Start ----
 function startExam(chapterId) {
   state.chapterId = chapterId;
-  state.examType  = 'chapter';
+  state.examType  = chapterId === null ? 'all' : 'chapter';
   state.examFinished = false;
 
   if (chapterId === null) {
@@ -643,6 +643,7 @@ document.addEventListener('DOMContentLoaded', () => {
     else                                startExam(state.chapterId);
   });
   document.getElementById('btn-result-home').addEventListener('click', renderHome);
+  document.getElementById('btn-result-home2').addEventListener('click', renderHome);
 
   // 認証タブ
   document.getElementById('tab-login').addEventListener('click', () => switchAuthTab('login'));
