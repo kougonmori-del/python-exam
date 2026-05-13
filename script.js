@@ -1,4 +1,4 @@
-const LETTERS = ['A', 'B', 'C', 'D'];
+const LETTERS = ['A', 'B', 'C', 'D', 'E'];
 const PASS_RATE = 0.7;
 
 const MOCK_DISTRIBUTION = [
@@ -176,6 +176,16 @@ function startAIExam() {
     ...q, chapterTitle: 'AIオリジナル'
   }));
   initExam('AIオリジナル試験（40問）');
+}
+
+function startNetExam() {
+  state.chapterId = null;
+  state.examType  = 'net';
+  state.examFinished = false;
+  state.questions = shuffle([...NET_QUESTIONS]).map(q => ({
+    ...q, chapterTitle: 'ネット問題'
+  }));
+  initExam('ネット問題（40問）');
 }
 
 function selectMockQuestions() {
@@ -591,6 +601,7 @@ async function renderHistory() {
     all:     ()   => '全章練習',
     mock:    ()   => '模擬試験',
     ai:      ()   => 'AIオリジナル',
+    net:     ()   => 'ネット問題',
   };
 
   listEl.innerHTML = sessions.map(s => {
@@ -631,6 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-all').addEventListener('click', () => startExam(null));
   document.getElementById('btn-mock').addEventListener('click', startMockExam);
   document.getElementById('btn-ai').addEventListener('click', startAIExam);
+  document.getElementById('btn-net').addEventListener('click', startNetExam);
   document.getElementById('btn-prev').addEventListener('click', prevQuestion);
   document.getElementById('btn-next').addEventListener('click', nextQuestion);
   document.getElementById('btn-reveal').addEventListener('click', revealAnswer);
@@ -640,6 +652,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-retry').addEventListener('click', () => {
     if (state.examType === 'mock')      startMockExam();
     else if (state.examType === 'ai')   startAIExam();
+    else if (state.examType === 'net')  startNetExam();
     else                                startExam(state.chapterId);
   });
   document.getElementById('btn-result-home').addEventListener('click', renderHome);
