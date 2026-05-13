@@ -188,6 +188,36 @@ function startNetExam() {
   initExam('ネット問題（40問）');
 }
 
+function startBeginnerExam() {
+  state.chapterId = null;
+  state.examType  = 'beginner';
+  state.examFinished = false;
+  state.questions = shuffle([...BEGINNER_QUESTIONS]).map(q => ({
+    ...q, chapterTitle: '初級問題'
+  }));
+  initExam('初級問題（全問）');
+}
+
+function startIntermediateExam() {
+  state.chapterId = null;
+  state.examType  = 'intermediate';
+  state.examFinished = false;
+  state.questions = shuffle([...INTERMEDIATE_QUESTIONS]).map(q => ({
+    ...q, chapterTitle: '中級問題'
+  }));
+  initExam('中級問題（全問）');
+}
+
+function startAdvancedExam() {
+  state.chapterId = null;
+  state.examType  = 'advanced';
+  state.examFinished = false;
+  state.questions = shuffle([...ADVANCED_QUESTIONS]).map(q => ({
+    ...q, chapterTitle: '上級問題'
+  }));
+  initExam('上級問題（全問）');
+}
+
 function selectMockQuestions() {
   const selected = [];
   for (const { id, count } of MOCK_DISTRIBUTION) {
@@ -597,11 +627,14 @@ async function renderHistory() {
   }
 
   const MODE_LABELS = {
-    chapter: (id) => `第${id}章`,
-    all:     ()   => '全章練習',
-    mock:    ()   => '模擬試験',
-    ai:      ()   => 'AIオリジナル',
-    net:     ()   => 'ネット問題',
+    chapter:      (id) => `第${id}章`,
+    all:          ()   => '全章練習',
+    mock:         ()   => '模擬試験',
+    ai:           ()   => 'AIオリジナル',
+    net:          ()   => 'ネット問題',
+    beginner:     ()   => '初級問題',
+    intermediate: ()   => '中級問題',
+    advanced:     ()   => '上級問題',
   };
 
   listEl.innerHTML = sessions.map(s => {
@@ -643,6 +676,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-mock').addEventListener('click', startMockExam);
   document.getElementById('btn-ai').addEventListener('click', startAIExam);
   document.getElementById('btn-net').addEventListener('click', startNetExam);
+  document.getElementById('btn-beginner').addEventListener('click', startBeginnerExam);
+  document.getElementById('btn-intermediate').addEventListener('click', startIntermediateExam);
+  document.getElementById('btn-advanced').addEventListener('click', startAdvancedExam);
   document.getElementById('btn-prev').addEventListener('click', prevQuestion);
   document.getElementById('btn-next').addEventListener('click', nextQuestion);
   document.getElementById('btn-reveal').addEventListener('click', revealAnswer);
@@ -650,10 +686,13 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-back-home').addEventListener('click', renderHome);
   document.getElementById('btn-back-result').addEventListener('click', backToResult);
   document.getElementById('btn-retry').addEventListener('click', () => {
-    if (state.examType === 'mock')      startMockExam();
-    else if (state.examType === 'ai')   startAIExam();
-    else if (state.examType === 'net')  startNetExam();
-    else                                startExam(state.chapterId);
+    if      (state.examType === 'mock')         startMockExam();
+    else if (state.examType === 'ai')           startAIExam();
+    else if (state.examType === 'net')          startNetExam();
+    else if (state.examType === 'beginner')     startBeginnerExam();
+    else if (state.examType === 'intermediate') startIntermediateExam();
+    else if (state.examType === 'advanced')     startAdvancedExam();
+    else                                        startExam(state.chapterId);
   });
   document.getElementById('btn-result-home').addEventListener('click', renderHome);
   document.getElementById('btn-result-home2').addEventListener('click', renderHome);
