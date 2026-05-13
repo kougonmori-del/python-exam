@@ -164,7 +164,7 @@ const PYQ_QUESTIONS = [
       "*vegetables, **options"
     ],
     answer: 3,
-    explanation: "*vegetablesでリストを展開してprint("carrot", "tomato"...)に、**optionsで辞書を展開してsep=","を渡す。結果："carrot,tomato"。"
+    explanation: '*vegetablesでリストを展開してprint("carrot", "tomato"...)に、**optionsで辞書を展開してsep=","を渡す。結果："carrot,tomato"。'
   },
   {
     text: '次のコードを実行した結果として表示されるものを選択してください（1つ選択）\naddress = ["hokkaido", "mie", "akita"]\naddress.sort(key=lambda s: len(s))\nprint(address)',
