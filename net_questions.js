@@ -143,7 +143,7 @@ const NET_QUESTIONS = [
       "while i < len(Zen):"
     ],
     answer: 0,
-    explanation: "enumerate()の代替としてrange(len())が使われる。Bはシンタックスエラー、Cはrange()にリストは渡せない、Dはrange()オブジェクトと比較できない、Eはiが未定義。"
+    explanation: "enumerate()の代替としてrange(len())が使われる。Bはシンタックスエラー、Cはrange()にリストは渡せない、Dはrange()オブジェクトと比較できない、Eはiが未定義。なおAも厳密にはvが未定義のためprint(i, v)はエラーになるが、5つの選択肢の中でインデックスを正しく取得できる唯一の構文であり、最も近い代替として正解となる。"
   },
   {
     text: "次のコードの実行結果として正しいものはどれか。\ni = 1\ni = 2\ndef f(arg):\n    i = 3\n    print(arg)\ni = 4\ni = 5\nf(i)",
@@ -227,7 +227,7 @@ const NET_QUESTIONS = [
       "power = set(sum(matrix))"
     ],
     answer: 0,
-    explanation: "zip(*matrix)はmatrixを転置する。*matrixで各行がアンパックされ、zipで列ごとにまとめられる。list()でリストに変換すると[(1,4,8),(3,9,27),(5,25,125)]となる。"
+    explanation: "zip(*matrix)はmatrixを転置する。*matrixで各行がアンパックされ、zipで列ごとにまとめられる。なお元コードのリスト内包表記は[[1,4,8],...]（リスト）を返すが、zip()は[(1,4,8),...]（タプル）を返す。設問の期待出力がタプル表記のためAが正解となる。"
   },
   {
     text: "次の実行結果を得たい場合に、コード1行目〜5行目を代替するものとして正しいものはどれか。\n実行結果: [(1, 3), (1, 2), (1, 5), (2, 3), (2, 5), (3, 2), (3, 5)]\n\ncombs = []\nfor x in [1,2,3]:\n    for y in [3,2,5]:\n        if x != y:\n            combs.append((x, y))\nprint(combs)",
