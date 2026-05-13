@@ -218,6 +218,16 @@ function startAdvancedExam() {
   initExam('上級問題（全問）');
 }
 
+function startPyqExam() {
+  state.chapterId = null;
+  state.examType  = 'pyq';
+  state.examFinished = false;
+  state.questions = shuffle([...PYQ_QUESTIONS]).map(q => ({
+    ...q, chapterTitle: 'PyQ模擬試験'
+  }));
+  initExam('基礎試験模擬（40問・PyQ）');
+}
+
 function selectMockQuestions() {
   const selected = [];
   for (const { id, count } of MOCK_DISTRIBUTION) {
@@ -635,6 +645,7 @@ async function renderHistory() {
     beginner:     ()   => '初級問題',
     intermediate: ()   => '中級問題',
     advanced:     ()   => '上級問題',
+    pyq:          ()   => 'PyQ模擬試験',
   };
 
   listEl.innerHTML = sessions.map(s => {
@@ -679,6 +690,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-beginner').addEventListener('click', startBeginnerExam);
   document.getElementById('btn-intermediate').addEventListener('click', startIntermediateExam);
   document.getElementById('btn-advanced').addEventListener('click', startAdvancedExam);
+  document.getElementById('btn-pyq').addEventListener('click', startPyqExam);
   document.getElementById('btn-prev').addEventListener('click', prevQuestion);
   document.getElementById('btn-next').addEventListener('click', nextQuestion);
   document.getElementById('btn-reveal').addEventListener('click', revealAnswer);
@@ -692,6 +704,7 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (state.examType === 'beginner')     startBeginnerExam();
     else if (state.examType === 'intermediate') startIntermediateExam();
     else if (state.examType === 'advanced')     startAdvancedExam();
+    else if (state.examType === 'pyq')          startPyqExam();
     else                                        startExam(state.chapterId);
   });
   document.getElementById('btn-result-home').addEventListener('click', renderHome);
